@@ -1,0 +1,18 @@
+# Build outputs
+bin/
+obj/
+*.apk
+*.dex
+*.class
+
+# Signing keys
+debug.keystore
+
+# System & IDE files
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.gradle/
+build/
+local.properties

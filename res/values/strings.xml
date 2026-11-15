@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SkyGemini AI</string>
+    <string name="takeoff">TAKEOFF\nউড়াও</string>
+    <string name="land">LAND\nল্যান্ড</string>
+    <string name="arm">ARM\nআনলক</string>
+    <string name="flip">360° FLIP\nডিগবাজি</string>
+    <string name="calibrate">CALIB\nলেভেল</string>
+    <string name="emergency">STOP\nথামো</string>
+    <string name="ai_copilot">START AI COPILOT</string>
+</resources>

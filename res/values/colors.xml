@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_cockpit">#050811</color>
+    <color name="bg_panel">#0A0E17</color>
+    <color name="cyan_neon">#00F0FF</color>
+    <color name="cyan_dim">#007788</color>
+    <color name="green_neon">#00FF88</color>
+    <color name="red_neon">#FF2255</color>
+    <color name="yellow_neon">#FFCC00</color>
+    <color name="orange_neon">#FF8800</color>
+    <color name="text_white">#FFFFFF</color>
+    <color name="text_dim">#8899AA</color>
+    <color name="joystick_base">#3300F0FF</color>
+    <color name="joystick_knob">#CC00F0FF</color>
+</resources>
