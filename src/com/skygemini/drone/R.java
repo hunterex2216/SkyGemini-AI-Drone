@@ -36,31 +36,34 @@ public final class R {
         public static final int ic_drone_logo=0x7f020008;
     }
     public static final class id {
-        public static final int aiAssistantCard=0x7f08000d;
-        public static final int aiOrbVisualizer=0x7f08000e;
-        public static final int btnArm=0x7f080013;
-        public static final int btnCalib=0x7f080017;
-        public static final int btnEmergency=0x7f080018;
-        public static final int btnFlip=0x7f080016;
-        public static final int btnHeadless=0x7f080008;
-        public static final int btnLand=0x7f080015;
-        public static final int btnRecord=0x7f08000a;
-        public static final int btnSettings=0x7f08000c;
-        public static final int btnSnap=0x7f080009;
-        public static final int btnSpeedMode=0x7f080006;
-        public static final int btnTakeoff=0x7f080014;
-        public static final int btnTiltMode=0x7f080007;
-        public static final int btnVoiceToggle=0x7f08000b;
+        public static final int aiAssistantCard=0x7f08000f;
+        public static final int aiOrbVisualizer=0x7f080010;
+        public static final int brandingLayout=0x7f080003;
+        public static final int btnAiKeyQuick=0x7f080012;
+        public static final int btnArm=0x7f080016;
+        public static final int btnCalib=0x7f08001a;
+        public static final int btnEmergency=0x7f08001b;
+        public static final int btnFlip=0x7f080019;
+        public static final int btnHeadless=0x7f08000b;
+        public static final int btnLand=0x7f080018;
+        public static final int btnRecord=0x7f08000d;
+        public static final int btnSettings=0x7f080005;
+        public static final int btnSnap=0x7f08000c;
+        public static final int btnSpeedMode=0x7f080009;
+        public static final int btnTakeoff=0x7f080017;
+        public static final int btnTiltMode=0x7f08000a;
+        public static final int btnVoiceToggle=0x7f08000e;
         public static final int hudOverlayView=0x7f080001;
         public static final int ivVideoFeed=0x7f080000;
-        public static final int leftJoystick=0x7f080010;
-        public static final int quickActionsBar=0x7f080012;
-        public static final int rightJoystick=0x7f080011;
+        public static final int leftJoystick=0x7f080013;
+        public static final int quickActionsBar=0x7f080015;
+        public static final int rightJoystick=0x7f080014;
+        public static final int rightPinnedLayout=0x7f080004;
         public static final int topBar=0x7f080002;
-        public static final int tvCameraStatus=0x7f080005;
-        public static final int tvCellStatus=0x7f080004;
-        public static final int tvTranscript=0x7f08000f;
-        public static final int tvWifiStatus=0x7f080003;
+        public static final int tvCameraStatus=0x7f080008;
+        public static final int tvCellStatus=0x7f080007;
+        public static final int tvTranscript=0x7f080011;
+        public static final int tvWifiStatus=0x7f080006;
     }
     public static final class layout {
         public static final int activity_main=0x7f030000;

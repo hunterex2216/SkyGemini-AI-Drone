@@ -20,6 +20,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -62,6 +63,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private Button btnRecord;
     private Button btnVoiceToggle;
     private Button btnSettings;
+    private Button btnAiKeyQuick;
 
     private Button btnArm;
     private Button btnTakeoff;
@@ -101,6 +103,11 @@ public class MainActivity extends Activity implements SensorEventListener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // CrashGuard: Prevent Android from killing app on uncaught exceptions
+        Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
+            Log.e("CrashGuard", "Intercepted crash on " + thread.getName() + ": " + ex.getMessage(), ex);
+        });
+
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -128,6 +135,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         btnRecord = findViewById(R.id.btnRecord);
         btnVoiceToggle = findViewById(R.id.btnVoiceToggle);
         btnSettings = findViewById(R.id.btnSettings);
+        btnAiKeyQuick = findViewById(R.id.btnAiKeyQuick);
 
         btnArm = findViewById(R.id.btnArm);
         btnTakeoff = findViewById(R.id.btnTakeoff);
@@ -168,13 +176,16 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         checkRuntimePermissions();
 
-        // Auto-start Gemini Live Copilot if key is configured
-        if (savedKey != null && !savedKey.isEmpty() && !savedKey.equals("YOUR_GEMINI_API_KEY")) {
+        // Safe Auto-Connect if key is configured, no crashing dialog timer
+        if (savedKey != null && !savedKey.isEmpty() && !savedKey.equals(DEFAULT_GEMINI_KEY)) {
+            tvTranscript.setText("🤖 জেমিনি প্রস্তুত। লাইভ কানেক্ট হচ্ছে...");
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                if (!geminiClient.isConnected()) {
+                if (!geminiClient.isConnected() && !isFinishing()) {
                     geminiClient.startLiveSession();
                 }
             }, 1000);
+        } else {
+            tvTranscript.setText("🎙️ উপরে [ ⚙️ SETTINGS ] বা [ 🔑 AI KEY ] চাপুন");
         }
     }
 
@@ -200,22 +211,20 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private void checkRuntimePermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            String[] perms = new String[]{
-                    Manifest.permission.RECORD_AUDIO,
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.CHANGE_NETWORK_STATE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-            };
-            boolean needReq = false;
-            for (String p : perms) {
-                if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
-                    needReq = true;
-                    break;
+            java.util.List<String> needed = new java.util.ArrayList<>();
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.RECORD_AUDIO);
+            }
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            }
+            if (Build.VERSION.SDK_INT <= 28) {
+                if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    needed.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
                 }
             }
-            if (needReq) {
-                requestPermissions(perms, 101);
+            if (!needed.isEmpty()) {
+                requestPermissions(needed.toArray(new String[0]), 101);
             }
         }
     }
@@ -412,8 +421,19 @@ public class MainActivity extends Activity implements SensorEventListener {
         btnVoiceToggle.setOnClickListener(v -> toggleGeminiLive());
         aiOrbVisualizer.setOnClickListener(v -> toggleGeminiLive());
 
-        // Settings Dialog
+        // Settings Dialog & Quick AI Key
         btnSettings.setOnClickListener(v -> showApiKeyDialog());
+        if (btnAiKeyQuick != null) {
+            btnAiKeyQuick.setOnClickListener(v -> showApiKeyDialog());
+        }
+        aiOrbVisualizer.setOnClickListener(v -> {
+            String k = prefs.getString(KEY_GEMINI_API, "");
+            if (k.isEmpty() || k.equals(DEFAULT_GEMINI_KEY)) {
+                showApiKeyDialog();
+            } else {
+                toggleGeminiLive();
+            }
+        });
     }
 
     private void takePhoto() {
@@ -590,23 +610,46 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private void showApiKeyDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("🔑 Google Gemini Live API Key");
+        if (isFinishing()) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && isDestroyed()) return;
 
-        final EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setText(prefs.getString(KEY_GEMINI_API, DEFAULT_GEMINI_KEY));
-        builder.setView(input);
+        try {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("🔑 Google Gemini Live AI Key");
+            builder.setMessage("এখানে আপনার Gemini API Key দিন। সেভ করা মাত্র AI স্বয়ংক্রিয়ভাবে কথা বলবে এবং ড্রোন কন্ট্রোল সক্রিয় হবে।");
 
-        builder.setPositiveButton("সংরক্ষণ (Save)", (dialog, which) -> {
-            String key = input.getText().toString().trim();
-            prefs.edit().putString(KEY_GEMINI_API, key).apply();
-            geminiClient.setApiKey(key);
-            Toast.makeText(this, "Gemini API Key সংরক্ষিত হয়েছে!", Toast.LENGTH_SHORT).show();
-        });
+            final EditText input = new EditText(this);
+            input.setSingleLine(true);
+            input.setPadding(40, 30, 40, 30);
+            input.setHint("Gemini API Key পেস্ট করুন");
 
-        builder.setNegativeButton("বাতিল", (dialog, which) -> dialog.cancel());
-        builder.show();
+            String currentKey = prefs.getString(KEY_GEMINI_API, "");
+            if (currentKey.isEmpty() || currentKey.equals(DEFAULT_GEMINI_KEY)) {
+                currentKey = loadBundledApiKey();
+            }
+            if (!currentKey.equals(DEFAULT_GEMINI_KEY)) {
+                input.setText(currentKey);
+            }
+            builder.setView(input);
+
+            builder.setPositiveButton("সংরক্ষণ ও কানেক্ট (Save & Connect)", (dialog, which) -> {
+                String key = input.getText().toString().trim();
+                if (!key.isEmpty() && !key.equals(DEFAULT_GEMINI_KEY)) {
+                    prefs.edit().putString(KEY_GEMINI_API, key).apply();
+                    geminiClient.setApiKey(key);
+                    Toast.makeText(this, "✅ Gemini API Key সংরক্ষিত হয়েছে! কানেক্ট হচ্ছে...", Toast.LENGTH_SHORT).show();
+                    geminiClient.stopLiveSession();
+                    geminiClient.startLiveSession();
+                } else {
+                    Toast.makeText(this, "⚠️ সঠিক API Key দিন", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+            builder.setNegativeButton("বাতিল", (dialog, which) -> dialog.cancel());
+            builder.show();
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed showing dialog: " + e.getMessage());
+        }
     }
 
     @Override

@@ -77,8 +77,8 @@ public class DualNetworkManager {
 
         try {
             connectivityManager.requestNetwork(wifiRequest, wifiCallback);
-        } catch (Exception e) {
-            Log.e(TAG, "Error requesting WiFi network: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.e(TAG, "Error requesting WiFi network: " + t.getMessage());
         }
 
         // 2. Request Cellular (Mobile Data) Network specifically for Gemini Live AI
@@ -98,9 +98,7 @@ public class DualNetworkManager {
                     try {
                         connectivityManager.bindProcessToNetwork(network);
                         Log.d(TAG, "Process successfully bound to Cellular network: " + network);
-                    } catch (Exception e) {
-                        Log.w(TAG, "Failed to bindProcessToNetwork: " + e.getMessage());
-                    }
+                    } catch (Throwable ignored) {}
                 }
 
                 notifyCellular(true, "4G/5G CELLULAR: BOUND", network);
@@ -113,7 +111,7 @@ public class DualNetworkManager {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                         try {
                             connectivityManager.bindProcessToNetwork(null);
-                        } catch (Exception ignored) {}
+                        } catch (Throwable ignored) {}
                     }
                     Log.w(TAG, "❌ Cellular Network Lost");
                     notifyCellular(false, "4G/5G: DISCONNECTED", null);
@@ -123,18 +121,20 @@ public class DualNetworkManager {
 
         try {
             connectivityManager.requestNetwork(cellularRequest, cellularCallback);
-        } catch (Exception e) {
-            Log.e(TAG, "Error requesting Cellular network: " + e.getMessage());
+        } catch (Throwable t) {
+            Log.e(TAG, "Error requesting Cellular network: " + t.getMessage());
         }
     }
 
     public void stop() {
         if (connectivityManager != null) {
             if (wifiCallback != null) {
-                try { connectivityManager.unregisterNetworkCallback(wifiCallback); } catch (Exception ignored) {}
+                try { connectivityManager.unregisterNetworkCallback(wifiCallback); } catch (Throwable ignored) {}
+                wifiCallback = null;
             }
             if (cellularCallback != null) {
-                try { connectivityManager.unregisterNetworkCallback(cellularCallback); } catch (Exception ignored) {}
+                try { connectivityManager.unregisterNetworkCallback(cellularCallback); } catch (Throwable ignored) {}
+                cellularCallback = null;
             }
         }
     }
