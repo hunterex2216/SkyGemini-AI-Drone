@@ -76,12 +76,12 @@ public class DualNetworkManager {
         };
 
         try {
-            connectivityManager.requestNetwork(wifiRequest, wifiCallback);
+            connectivityManager.registerNetworkCallback(wifiRequest, wifiCallback);
         } catch (Throwable t) {
-            Log.e(TAG, "Error requesting WiFi network: " + t.getMessage());
+            Log.w(TAG, "WiFi callback registration skipped: " + t.getMessage());
         }
 
-        // 2. Request Cellular (Mobile Data) Network specifically for Gemini Live AI
+        // 2. Register Cellular (Mobile Data) Network listener
         NetworkRequest cellularRequest = new NetworkRequest.Builder()
                 .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -92,15 +92,6 @@ public class DualNetworkManager {
             public void onAvailable(Network network) {
                 cellularNetwork = network;
                 Log.d(TAG, "✅ Cellular Network Available: " + network);
-
-                // Automatically bind process to Cellular so all Internet/TLS/WebSocket/DNS traffic uses 4G/5G
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    try {
-                        connectivityManager.bindProcessToNetwork(network);
-                        Log.d(TAG, "Process successfully bound to Cellular network: " + network);
-                    } catch (Throwable ignored) {}
-                }
-
                 notifyCellular(true, "4G/5G CELLULAR: BOUND", network);
             }
 
@@ -108,11 +99,6 @@ public class DualNetworkManager {
             public void onLost(Network network) {
                 if (cellularNetwork != null && cellularNetwork.equals(network)) {
                     cellularNetwork = null;
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                        try {
-                            connectivityManager.bindProcessToNetwork(null);
-                        } catch (Throwable ignored) {}
-                    }
                     Log.w(TAG, "❌ Cellular Network Lost");
                     notifyCellular(false, "4G/5G: DISCONNECTED", null);
                 }
@@ -120,9 +106,9 @@ public class DualNetworkManager {
         };
 
         try {
-            connectivityManager.requestNetwork(cellularRequest, cellularCallback);
+            connectivityManager.registerNetworkCallback(cellularRequest, cellularCallback);
         } catch (Throwable t) {
-            Log.e(TAG, "Error requesting Cellular network: " + t.getMessage());
+            Log.w(TAG, "Cellular callback registration skipped: " + t.getMessage());
         }
     }
 
@@ -180,15 +166,7 @@ public class DualNetworkManager {
     }
 
     public void bindProcessToCellular() {
-        Network net = cellularNetwork;
-        if (net != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            try {
-                connectivityManager.bindProcessToNetwork(net);
-                Log.d(TAG, "Explicitly bound process to Cellular Network: " + net);
-            } catch (Exception e) {
-                Log.w(TAG, "bindProcessToCellular error: " + e.getMessage());
-            }
-        }
+        // No-op: keep default Linux routing so Wi-Fi UDP sockets (192.168.4.153) are never hijacked
     }
 
     private void notifyWifi(boolean connected, String message, Network network) {

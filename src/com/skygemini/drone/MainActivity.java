@@ -103,102 +103,112 @@ public class MainActivity extends Activity implements SensorEventListener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // CrashGuard: Prevent Android from killing app on uncaught exceptions
-        Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
-            Log.e("CrashGuard", "Intercepted crash on " + thread.getName() + ": " + ex.getMessage(), ex);
-        });
+        try {
+            requestWindowFeature(Window.FEATURE_NO_TITLE);
+        } catch (Throwable ignored) {}
 
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        try {
+            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } catch (Throwable ignored) {}
 
-        setContentView(R.layout.activity_main);
-
-        hideSystemUI();
-
-        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-
-        // Bind Views
-        ivVideoFeed = findViewById(R.id.ivVideoFeed);
-        hudOverlayView = findViewById(R.id.hudOverlayView);
-        tvWifiStatus = findViewById(R.id.tvWifiStatus);
-        tvCellStatus = findViewById(R.id.tvCellStatus);
-        tvCameraStatus = findViewById(R.id.tvCameraStatus);
-        tvTranscript = findViewById(R.id.tvTranscript);
-        aiOrbVisualizer = findViewById(R.id.aiOrbVisualizer);
-
-        btnSpeedMode = findViewById(R.id.btnSpeedMode);
-        btnTiltMode = findViewById(R.id.btnTiltMode);
-        btnHeadless = findViewById(R.id.btnHeadless);
-        btnSnap = findViewById(R.id.btnSnap);
-        btnRecord = findViewById(R.id.btnRecord);
-        btnVoiceToggle = findViewById(R.id.btnVoiceToggle);
-        btnSettings = findViewById(R.id.btnSettings);
-        btnAiKeyQuick = findViewById(R.id.btnAiKeyQuick);
-
-        btnArm = findViewById(R.id.btnArm);
-        btnTakeoff = findViewById(R.id.btnTakeoff);
-        btnLand = findViewById(R.id.btnLand);
-        btnFlip = findViewById(R.id.btnFlip);
-        btnCalib = findViewById(R.id.btnCalib);
-        btnEmergency = findViewById(R.id.btnEmergency);
-
-        leftJoystick = findViewById(R.id.leftJoystick);
-        rightJoystick = findViewById(R.id.rightJoystick);
-
-        // Initialize Core Drone Services
-        networkManager = new DualNetworkManager(this);
-        droneController = new DroneController(networkManager);
-        videoReceiver = new VideoReceiver(networkManager);
-        geminiClient = new GeminiLiveClient(networkManager, droneController);
-
-        String savedKey = prefs.getString(KEY_GEMINI_API, "");
-        if (savedKey.isEmpty() || savedKey.equals(DEFAULT_GEMINI_KEY)) {
-            savedKey = loadBundledApiKey();
-            if (!savedKey.equals(DEFAULT_GEMINI_KEY)) {
-                prefs.edit().putString(KEY_GEMINI_API, savedKey).apply();
-            }
-        }
-        geminiClient.setApiKey(savedKey);
-
-        // Initialize Sensors
-        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        if (sensorManager != null) {
-            accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        try {
+            setContentView(R.layout.activity_main);
+        } catch (Throwable t) {
+            Log.e("MainActivity", "setContentView error: " + t.getMessage(), t);
         }
 
-        setupNetworkCallbacks();
-        setupVideoReceiver();
-        setupJoysticks();
-        setupButtons();
-        setupGeminiLiveCallbacks();
+        try {
+            hideSystemUI();
 
-        checkRuntimePermissions();
+            prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-        // Safe Auto-Connect if key is configured, no crashing dialog timer
-        if (savedKey != null && !savedKey.isEmpty() && !savedKey.equals(DEFAULT_GEMINI_KEY)) {
-            tvTranscript.setText("🤖 জেমিনি প্রস্তুত। লাইভ কানেক্ট হচ্ছে...");
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                if (!geminiClient.isConnected() && !isFinishing()) {
-                    geminiClient.startLiveSession();
+            // Bind Views
+            ivVideoFeed = findViewById(R.id.ivVideoFeed);
+            hudOverlayView = findViewById(R.id.hudOverlayView);
+            tvWifiStatus = findViewById(R.id.tvWifiStatus);
+            tvCellStatus = findViewById(R.id.tvCellStatus);
+            tvCameraStatus = findViewById(R.id.tvCameraStatus);
+            tvTranscript = findViewById(R.id.tvTranscript);
+            aiOrbVisualizer = findViewById(R.id.aiOrbVisualizer);
+
+            btnSpeedMode = findViewById(R.id.btnSpeedMode);
+            btnTiltMode = findViewById(R.id.btnTiltMode);
+            btnHeadless = findViewById(R.id.btnHeadless);
+            btnSnap = findViewById(R.id.btnSnap);
+            btnRecord = findViewById(R.id.btnRecord);
+            btnVoiceToggle = findViewById(R.id.btnVoiceToggle);
+            btnSettings = findViewById(R.id.btnSettings);
+            btnAiKeyQuick = findViewById(R.id.btnAiKeyQuick);
+
+            btnArm = findViewById(R.id.btnArm);
+            btnTakeoff = findViewById(R.id.btnTakeoff);
+            btnLand = findViewById(R.id.btnLand);
+            btnFlip = findViewById(R.id.btnFlip);
+            btnCalib = findViewById(R.id.btnCalib);
+            btnEmergency = findViewById(R.id.btnEmergency);
+
+            leftJoystick = findViewById(R.id.leftJoystick);
+            rightJoystick = findViewById(R.id.rightJoystick);
+
+            // Initialize Core Drone Services
+            networkManager = new DualNetworkManager(this);
+            droneController = new DroneController(networkManager);
+            videoReceiver = new VideoReceiver(networkManager);
+            geminiClient = new GeminiLiveClient(networkManager, droneController);
+
+            String savedKey = prefs.getString(KEY_GEMINI_API, "");
+            if (savedKey.isEmpty() || savedKey.equals(DEFAULT_GEMINI_KEY)) {
+                savedKey = loadBundledApiKey();
+                if (!savedKey.equals(DEFAULT_GEMINI_KEY)) {
+                    prefs.edit().putString(KEY_GEMINI_API, savedKey).apply();
                 }
-            }, 1000);
-        } else {
-            tvTranscript.setText("🎙️ উপরে [ ⚙️ SETTINGS ] বা [ 🔑 AI KEY ] চাপুন");
+            }
+            geminiClient.setApiKey(savedKey);
+
+            // Initialize Sensors
+            sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+            if (sensorManager != null) {
+                accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            }
+
+            setupNetworkCallbacks();
+            setupVideoReceiver();
+            setupJoysticks();
+            setupButtons();
+            setupGeminiLiveCallbacks();
+
+            checkRuntimePermissions();
+
+            // Safe Auto-Connect if key is configured, no crashing dialog timer
+            if (savedKey != null && !savedKey.isEmpty() && !savedKey.equals(DEFAULT_GEMINI_KEY)) {
+                tvTranscript.setText("🤖 জেমিনি প্রস্তুত। লাইভ কানেক্ট হচ্ছে...");
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (!geminiClient.isConnected() && !isFinishing()) {
+                        geminiClient.startLiveSession();
+                    }
+                }, 1000);
+            } else {
+                tvTranscript.setText("🎙️ উপরে [ ⚙️ SETTINGS ] বা [ 🔑 AI KEY ] চাপুন");
+            }
+        } catch (Throwable t) {
+            Log.e("MainActivity", "Fatal initialization error caught: " + t.getMessage(), t);
         }
     }
 
     private void hideSystemUI() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            }
+        } catch (Throwable ignored) {}
     }
 
     @Override
@@ -210,23 +220,13 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private void checkRuntimePermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            java.util.List<String> needed = new java.util.ArrayList<>();
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                needed.add(Manifest.permission.RECORD_AUDIO);
-            }
-            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                needed.add(Manifest.permission.ACCESS_FINE_LOCATION);
-            }
-            if (Build.VERSION.SDK_INT <= 28) {
-                if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                    needed.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 101);
                 }
             }
-            if (!needed.isEmpty()) {
-                requestPermissions(needed.toArray(new String[0]), 101);
-            }
-        }
+        } catch (Throwable ignored) {}
     }
 
     private void setupNetworkCallbacks() {
@@ -652,33 +652,57 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
+    private long lastBackPressTime = 0;
+
+    @Override
+    public void onBackPressed() {
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastBackPressTime < 2500) {
+            super.onBackPressed();
+        } else {
+            lastBackPressTime = currentTime;
+            Toast.makeText(this, "অ্যাপ বন্ধ করতে আবার ব্যাক (Back) প্রেস করুন", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
-        hideSystemUI();
-        networkManager.start();
-        droneController.start();
-        videoReceiver.start();
+        try {
+            hideSystemUI();
+            if (networkManager != null) networkManager.start();
+            if (droneController != null) droneController.start();
+            if (videoReceiver != null) videoReceiver.start();
 
-        if (sensorManager != null && accelerometer != null) {
-            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
+            if (sensorManager != null && accelerometer != null) {
+                sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
+            }
+        } catch (Throwable t) {
+            Log.e("MainActivity", "onResume error: " + t.getMessage(), t);
         }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        if (sensorManager != null) {
-            sensorManager.unregisterListener(this);
+        try {
+            if (sensorManager != null) {
+                sensorManager.unregisterListener(this);
+            }
+            if (videoReceiver != null) videoReceiver.stop();
+            if (droneController != null) droneController.stop();
+            if (geminiClient != null) geminiClient.stopLiveSession();
+            if (networkManager != null) networkManager.stop();
+        } catch (Throwable t) {
+            Log.e("MainActivity", "onPause error: " + t.getMessage(), t);
         }
-        videoReceiver.stop();
-        droneController.stop();
-        geminiClient.stopLiveSession();
-        networkManager.stop();
     }
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
+        try {
+            super.onDestroy();
+        } catch (Throwable ignored) {}
     }
 }
+
