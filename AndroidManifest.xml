@@ -21,8 +21,14 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Storage permissions for Camera Snapshots and Video Recordings -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
     <application
         android:label="SkyGemini AI"
+        android:icon="@drawable/ic_drone_logo"
+        android:roundIcon="@drawable/ic_drone_logo"
         android:theme="@style/Theme.SkyGemini"
         android:usesCleartextTraffic="true"
         android:largeHeap="true">

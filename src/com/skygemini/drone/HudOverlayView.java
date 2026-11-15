@@ -81,6 +81,13 @@ public class HudOverlayView extends View {
         postInvalidate();
     }
 
+    private boolean isCameraOnline = false;
+
+    public void setCameraOnline(boolean online) {
+        this.isCameraOnline = online;
+        postInvalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -102,6 +109,21 @@ public class HudOverlayView extends View {
 
         // 4. Draw Telemetry Data on Sides
         drawTelemetry(canvas, w, h);
+
+        // 5. Draw Searching indicator if camera is not streaming
+        if (!isCameraOnline) {
+            drawCameraSearchingNotice(canvas, cx, cy);
+        }
+    }
+
+    private void drawCameraSearchingNotice(Canvas canvas, float cx, float cy) {
+        long time = android.os.SystemClock.uptimeMillis();
+        float pulse = (float) (Math.sin((time % 1500) / 1500.0 * Math.PI * 2.0) * 0.3 + 0.7);
+        textPaint.setAlpha((int) (pulse * 255));
+        canvas.drawText("FPV CAMERA SEARCHING... (UDP:8080)", cx - 180f, cy - 70f, textPaint);
+        smallTextPaint.setAlpha((int) (pulse * 220));
+        canvas.drawText("Connect phone to drone Wi-Fi (192.168.4.153)", cx - 170f, cy - 45f, smallTextPaint);
+        postInvalidateOnAnimation();
     }
 
     private void drawCornerBrackets(Canvas canvas, int w, int h) {

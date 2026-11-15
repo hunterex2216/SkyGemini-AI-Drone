@@ -10,101 +10,334 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:contentDescription="Drone Video Stream" />
+        android:contentDescription="Drone FPV Video Feed" />
 
-    <!-- 2. Cyberpunk HUD Overlay (Horizon, Crosshair, Ladder, Telemetry) -->
+    <!-- 2. Cyberpunk HUD Overlay (Horizon Ladder, Aim Reticle, Telemetry) -->
     <com.skygemini.drone.HudOverlayView
         android:id="@+id/hudOverlayView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 3. Top Navigation & Dual-Network Status Bar -->
+    <!-- 3. Top Glassmorphic Navigation & Status Bar -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="46dp"
+        android:layout_height="48dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:background="#A0050811">
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:background="@drawable/bg_glass_bar">
+
+        <!-- App Logo & Branding -->
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_drone_logo"
+            android:contentDescription="Logo" />
+
+        <Space
+            android:layout_width="8dp"
+            android:layout_height="wrap_content" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🛸 SKYGEMINI AI"
+            android:text="SKYGEMINI AI"
             android:textColor="@color/cyan_neon"
-            android:textSize="14sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
         <Space
-            android:layout_width="16dp"
+            android:layout_width="12dp"
             android:layout_height="wrap_content" />
 
-        <!-- WiFi Network Pill -->
+        <!-- WiFi Drone Status Pill -->
         <TextView
             android:id="@+id/tvWifiStatus"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="#3300F0FF"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
-            android:text="WIFI (DRONE): BINDING..."
+            android:layout_height="28dp"
+            android:background="@drawable/bg_pill_cyan"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="WIFI: BINDING..."
             android:textColor="@color/cyan_neon"
-            android:textSize="10sp" />
+            android:textSize="9sp"
+            android:textStyle="bold" />
 
         <Space
-            android:layout_width="8dp"
+            android:layout_width="6dp"
             android:layout_height="wrap_content" />
 
-        <!-- 4G/Cellular Network Pill -->
+        <!-- Cellular / Gemini 4G Status Pill -->
         <TextView
             android:id="@+id/tvCellStatus"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="#3300FF88"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
-            android:text="CELLULAR (4G): BINDING..."
+            android:layout_height="28dp"
+            android:background="@drawable/bg_pill_green"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="4G/5G: ONLINE"
             android:textColor="@color/green_neon"
-            android:textSize="10sp" />
+            android:textSize="9sp"
+            android:textStyle="bold" />
 
         <Space
-            android:layout_width="8dp"
+            android:layout_width="6dp"
             android:layout_height="wrap_content" />
 
-        <!-- Gemini AI Status Pill -->
+        <!-- Camera FPV Status Pill -->
         <TextView
-            android:id="@+id/tvAiStatus"
+            android:id="@+id/tvCameraStatus"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="#33FFCC00"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
-            android:text="GEMINI: IDLE"
+            android:layout_height="28dp"
+            android:background="@drawable/bg_pill_yellow"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="CAM: WAITING..."
             android:textColor="@color/yellow_neon"
-            android:textSize="10sp" />
+            android:textSize="9sp"
+            android:textStyle="bold" />
 
         <View
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <!-- Gemini Live Mic / AI Toggle Button -->
+        <!-- Speed Mode Switcher (30% / 60% / 100%) -->
+        <Button
+            android:id="@+id/btnSpeedMode"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_pill_cyan"
+            android:text="⚡ 30%"
+            android:textColor="@color/cyan_neon"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp" />
+
+        <Space
+            android:layout_width="6dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Phone Tilt Steering (G-Sensor) -->
+        <Button
+            android:id="@+id/btnTiltMode"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_pill_purple"
+            android:text="📱 TILT: OFF"
+            android:textColor="#D8B4FE"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp" />
+
+        <Space
+            android:layout_width="6dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Headless Mode -->
+        <Button
+            android:id="@+id/btnHeadless"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_pill_yellow"
+            android:text="🧭 HEADLESS"
+            android:textColor="@color/yellow_neon"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp" />
+
+        <Space
+            android:layout_width="6dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Photo Snapshot -->
+        <Button
+            android:id="@+id/btnSnap"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_pill_cyan"
+            android:text="📸 SNAP"
+            android:textColor="@color/cyan_neon"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp" />
+
+        <Space
+            android:layout_width="6dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Video Record -->
+        <Button
+            android:id="@+id/btnRecord"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_pill_red"
+            android:text="🎥 REC"
+            android:textColor="@color/red_neon"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp" />
+
+        <Space
+            android:layout_width="6dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Gemini Live Assistant Voice Toggle -->
         <Button
             android:id="@+id/btnVoiceToggle"
             android:layout_width="wrap_content"
-            android:layout_height="34dp"
-            android:background="#3300FF88"
-            android:text="🎙️ START AI COPILOT"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_pill_green"
+            android:text="🎙️ START GEMINI LIVE"
             android:textColor="@color/green_neon"
-            android:textSize="11sp"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
+
+        <Space
+            android:layout_width="6dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Settings Button -->
+        <Button
+            android:id="@+id/btnSettings"
+            android:layout_width="38dp"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_pill_cyan"
+            android:text="⚙️"
+            android:textColor="@color/cyan_neon"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- 4. Center-Top Floating AI Assistant Visualizer & Dialogue Card -->
+    <LinearLayout
+        android:id="@+id/aiAssistantCard"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/topBar"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_glass_card"
+        android:paddingStart="12dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:elevation="10dp">
+
+        <!-- Glowing Interactive AI Orb -->
+        <com.skygemini.drone.AiOrbVisualizerView
+            android:id="@+id/aiOrbVisualizer"
+            android:layout_width="36dp"
+            android:layout_height="36dp" />
+
+        <Space
+            android:layout_width="10dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Spoken Bengali / English Dialogue Transcript -->
+        <TextView
+            android:id="@+id/tvTranscript"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="420dp"
+            android:text="🎙️ জেমিনির সাথে কথা বলুন (বাংলায় বা ইংরেজিতে)"
+            android:textColor="@color/text_white"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- 5. Left Virtual Joystick (Altitude Throttle & Yaw Rudder) -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="16dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:elevation="20dp">
+
+        <com.skygemini.drone.VirtualJoystickView
+            android:id="@+id/leftJoystick"
+            android:layout_width="180dp"
+            android:layout_height="180dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="ALTITUDE / YAW"
+            android:textColor="#8000F0FF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 6. Right Virtual Joystick (Pitch Forward/Back & Roll Left/Right) -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentEnd="true"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="16dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:elevation="20dp">
+
+        <com.skygemini.drone.VirtualJoystickView
+            android:id="@+id/rightJoystick"
+            android:layout_width="180dp"
+            android:layout_height="180dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="PITCH / ROLL"
+            android:textColor="#8000F0FF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 7. Center Flight Quick Actions Dock -->
+    <LinearLayout
+        android:id="@+id/quickActionsBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="16dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:background="@drawable/bg_dock"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:elevation="15dp">
+
+        <!-- Arm Motors -->
+        <Button
+            android:id="@+id/btnArm"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:background="@drawable/bg_pill_yellow"
+            android:text="⚡ ARM"
+            android:textColor="@color/yellow_neon"
+            android:textSize="10sp"
             android:textStyle="bold"
             android:paddingStart="12dp"
             android:paddingEnd="12dp" />
@@ -113,103 +346,21 @@
             android:layout_width="8dp"
             android:layout_height="wrap_content" />
 
-        <!-- Settings Button -->
-        <Button
-            android:id="@+id/btnSettings"
-            android:layout_width="40dp"
-            android:layout_height="34dp"
-            android:background="#3300F0FF"
-            android:text="⚙️"
-            android:textColor="@color/cyan_neon"
-            android:textSize="14sp" />
-    </LinearLayout>
-
-    <!-- 4. Live Voice Dialogue / Transcript Bubble (Floating) -->
-    <TextView
-        android:id="@+id/tvTranscript"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/topBar"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="8dp"
-        android:background="#C00A0E17"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:text="🎙️ Tap 'START AI COPILOT' to speak in Bengali or English"
-        android:textColor="@color/text_white"
-        android:textSize="12sp"
-        android:elevation="10dp" />
-
-    <!-- 5. Left Virtual Joystick (Throttle & Yaw) -->
-    <com.skygemini.drone.VirtualJoystickView
-        android:id="@+id/leftJoystick"
-        android:layout_width="190dp"
-        android:layout_height="190dp"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentStart="true"
-        android:layout_marginStart="24dp"
-        android:layout_marginBottom="16dp"
-        android:elevation="20dp" />
-
-    <!-- 6. Right Virtual Joystick (Pitch & Roll) -->
-    <com.skygemini.drone.VirtualJoystickView
-        android:id="@+id/rightJoystick"
-        android:layout_width="190dp"
-        android:layout_height="190dp"
-        android:layout_alignParentBottom="true"
-        android:layout_alignParentEnd="true"
-        android:layout_marginEnd="24dp"
-        android:layout_marginBottom="16dp"
-        android:elevation="20dp" />
-
-    <!-- 7. Center Flight Quick Actions Bar -->
-    <LinearLayout
-        android:id="@+id/quickActionsBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginBottom="20dp"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:background="#B00A0E17"
-        android:padding="8dp"
-        android:elevation="15dp">
-
-        <!-- Arm Motors -->
-        <Button
-            android:id="@+id/btnArm"
-            android:layout_width="wrap_content"
-            android:layout_height="38dp"
-            android:background="#33FFCC00"
-            android:text="⚡ ARM"
-            android:textColor="@color/yellow_neon"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
-
-        <Space
-            android:layout_width="6dp"
-            android:layout_height="wrap_content" />
-
         <!-- Takeoff -->
         <Button
             android:id="@+id/btnTakeoff"
             android:layout_width="wrap_content"
             android:layout_height="38dp"
-            android:background="#3300FF88"
+            android:background="@drawable/bg_pill_green"
             android:text="🛫 TAKEOFF"
             android:textColor="@color/green_neon"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp" />
 
         <Space
-            android:layout_width="6dp"
+            android:layout_width="8dp"
             android:layout_height="wrap_content" />
 
         <!-- Land -->
@@ -217,16 +368,16 @@
             android:id="@+id/btnLand"
             android:layout_width="wrap_content"
             android:layout_height="38dp"
-            android:background="#3300F0FF"
+            android:background="@drawable/bg_pill_cyan"
             android:text="🛬 LAND"
             android:textColor="@color/cyan_neon"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp" />
 
         <Space
-            android:layout_width="6dp"
+            android:layout_width="8dp"
             android:layout_height="wrap_content" />
 
         <!-- 360 Flip -->
@@ -234,33 +385,33 @@
             android:id="@+id/btnFlip"
             android:layout_width="wrap_content"
             android:layout_height="38dp"
-            android:background="#33FF8800"
-            android:text="🔄 FLIP"
-            android:textColor="@color/orange_neon"
+            android:background="@drawable/bg_pill_purple"
+            android:text="🔄 360° FLIP"
+            android:textColor="#D8B4FE"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
         <Space
-            android:layout_width="6dp"
+            android:layout_width="8dp"
             android:layout_height="wrap_content" />
 
-        <!-- Calibrate -->
+        <!-- Calibrate Gyro -->
         <Button
             android:id="@+id/btnCalib"
             android:layout_width="wrap_content"
             android:layout_height="38dp"
-            android:background="#3300F0FF"
+            android:background="@drawable/bg_pill_yellow"
             android:text="⚖️ CALIB"
-            android:textColor="@color/cyan_neon"
+            android:textColor="@color/yellow_neon"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp" />
 
         <Space
-            android:layout_width="6dp"
+            android:layout_width="8dp"
             android:layout_height="wrap_content" />
 
         <!-- Emergency Stop -->
@@ -268,13 +419,13 @@
             android:id="@+id/btnEmergency"
             android:layout_width="wrap_content"
             android:layout_height="38dp"
-            android:background="#55FF2255"
+            android:background="@drawable/bg_pill_red"
             android:text="🛑 STOP"
             android:textColor="@color/red_neon"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
     </LinearLayout>
 

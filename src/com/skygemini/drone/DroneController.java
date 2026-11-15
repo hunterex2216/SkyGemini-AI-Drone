@@ -34,6 +34,10 @@ public class DroneController {
     public int throttle = 0;
     public int yaw = 128;
 
+    // Speed Gear: 1 = 30%, 2 = 60%, 3 = 100%
+    private int speedMode = 1; // default 30% for safety
+    private float speedFactor = 0.35f;
+
     // Command Flags
     private boolean flagTakeoff = false;
     private boolean flagLand = false;
@@ -333,10 +337,49 @@ public class DroneController {
         this.yaw = 128;
     }
 
+    public void setSpeedMode(int mode) {
+        if (mode < 1) mode = 1;
+        if (mode > 3) mode = 3;
+        this.speedMode = mode;
+        if (speedMode == 1) speedFactor = 0.35f;
+        else if (speedMode == 2) speedFactor = 0.65f;
+        else speedFactor = 1.00f;
+    }
+
+    public int toggleSpeedMode() {
+        int next = (speedMode % 3) + 1;
+        setSpeedMode(next);
+        return speedMode;
+    }
+
+    public String getSpeedLabel() {
+        if (speedMode == 1) return "⚡ 30%";
+        if (speedMode == 2) return "⚡ 60%";
+        return "⚡ 100%";
+    }
+
+    public void setHeadlessMode(boolean enabled) {
+        this.flagHeadless = enabled;
+    }
+
+    public boolean isHeadlessMode() {
+        return flagHeadless;
+    }
+
+    public boolean toggleHeadlessMode() {
+        flagHeadless = !flagHeadless;
+        return flagHeadless;
+    }
+
     public void setControls(float normRoll, float normPitch, float normThrottle, float normYaw) {
-        this.roll = clamp((int) (128 + (normRoll * 127)), 0, 255);
-        this.pitch = clamp((int) (128 + (normPitch * 127)), 0, 255);
-        this.yaw = clamp((int) (128 + (normYaw * 127)), 0, 255);
+        // Apply speed gear scaling to attitude axes
+        float scaledRoll = normRoll * speedFactor;
+        float scaledPitch = normPitch * speedFactor;
+        float scaledYaw = normYaw * speedFactor;
+
+        this.roll = clamp((int) (128 + (scaledRoll * 127)), 0, 255);
+        this.pitch = clamp((int) (128 + (scaledPitch * 127)), 0, 255);
+        this.yaw = clamp((int) (128 + (scaledYaw * 127)), 0, 255);
 
         if (normThrottle >= 0) {
             this.throttle = clamp((int) (normThrottle * 255), 0, 255);

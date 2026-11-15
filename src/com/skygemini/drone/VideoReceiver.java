@@ -17,22 +17,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Ultra-Fast Real-Time UDP Video Receiver for Drone FPV Camera.
- * Disassembled & reverse-engineered from web_cam libCamera.so:
- * - Dedicated UDP port 8080 receiver (Image::put assembly)
- * - Zero-allocation pre-buffered slice reassembly (1464-byte payloads)
- * - Asynchronous non-blocking decode with latest-frame-only dropping
- * - RGB_565 hardware-accelerated instant rendering with zero lag
- * - Continuous fast wake-up handshake [0x42, 0x76] ('B', 'v')
+ * Reverse-Engineered from companion app libCamera.so & Image::put:
+ * 1. Single UDP Socket bound to local port 8080 (ensuring drone streams back to port 8080).
+ * 2. Handshake startCmd [0x42, 0x76] ('B', 'v') sent directly from port 8080 to drone 192.168.4.153:8080.
+ * 3. Drone handshake ACK [0x55, 0x00, type, ... 0x99] detection.
+ * 4. Zero-allocation slice reassembly (1464-byte payloads from Image::put).
+ * 5. Direct MJPEG fallback detection.
+ * 6. Non-blocking RGB_565 hardware decode with latest-frame-only dropping (0ms latency).
  */
 public class VideoReceiver {
     private static final String TAG = "VideoReceiver";
     private static final int VIDEO_PORT = 8080;
-    private static final int MAX_FRAME_SIZE = 400000; // 400 KB preallocated buffer
+    private static final int MAX_FRAME_SIZE = 500000; // 500 KB frame buffer
     private static final int SLICE_PAYLOAD_SIZE = 1464; // from libCamera Image::put
 
     public interface OnFrameListener {
         void onFrame(Bitmap bitmap);
         void onFpsUpdate(int fps);
+        void onCameraStateChanged(boolean connected);
         void onRawJpegFrame(byte[] jpegBytes);
     }
 
@@ -41,9 +43,11 @@ public class VideoReceiver {
     private OnFrameListener listener;
 
     private volatile boolean running = false;
-    private DatagramSocket videoSocket;
-    private DatagramSocket handshakeSocket;
+    private volatile boolean cameraConnected = false;
+    private volatile long lastFrameTimestamp = 0;
 
+    // Single unified DatagramSocket for both handshake and video packet reception
+    private DatagramSocket unifiedSocket;
     private Thread rxThread;
     private Thread handshakeThread;
 
@@ -51,7 +55,10 @@ public class VideoReceiver {
     private final ExecutorService decodeExecutor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean isDecoding = new AtomicBoolean(false);
 
-    // Preallocated buffers for zero-garbage packet reassembly
+    // Latest decoded bitmap for photo snapshot & video recording
+    private volatile Bitmap latestFrameBitmap = null;
+
+    // Preallocated buffer for packet reassembly
     private final byte[] frameBuffer = new byte[MAX_FRAME_SIZE];
     private int currentFrameId = -1;
     private int expectedTotalSlices = 0;
@@ -74,11 +81,19 @@ public class VideoReceiver {
         this.listener = listener;
     }
 
+    public Bitmap getLatestBitmap() {
+        return latestFrameBitmap;
+    }
+
+    public boolean isCameraStreaming() {
+        return cameraConnected && (System.currentTimeMillis() - lastFrameTimestamp < 3000);
+    }
+
     public synchronized void start() {
         if (running) return;
         running = true;
 
-        rxThread = new Thread(this::receiveVideoLoop, "DroneVideoRx");
+        rxThread = new Thread(this::receiveAndProcessLoop, "DroneVideoRx");
         rxThread.setPriority(Thread.MAX_PRIORITY);
         rxThread.start();
 
@@ -86,12 +101,13 @@ public class VideoReceiver {
         handshakeThread.setPriority(Thread.NORM_PRIORITY);
         handshakeThread.start();
 
-        Log.d(TAG, "Ultra-fast VideoReceiver started on port " + VIDEO_PORT);
+        Log.d(TAG, "VideoReceiver started on port " + VIDEO_PORT);
     }
 
     public synchronized void stop() {
         running = false;
-        closeSockets();
+        cameraConnected = false;
+        closeSocket();
 
         if (rxThread != null) {
             rxThread.interrupt();
@@ -105,70 +121,52 @@ public class VideoReceiver {
     }
 
     public synchronized void onWifiReady(Network wifiNetwork) {
-        Log.d(TAG, "Rebinding video socket to Wi-Fi: " + wifiNetwork);
-        if (videoSocket != null) {
-            try { wifiNetwork.bindSocket(videoSocket); } catch (Exception ignored) {}
-        }
-        if (handshakeSocket != null) {
-            try { wifiNetwork.bindSocket(handshakeSocket); } catch (Exception ignored) {}
+        Log.d(TAG, "Wi-Fi ready, binding video socket: " + wifiNetwork);
+        if (unifiedSocket != null && !unifiedSocket.isClosed()) {
+            try {
+                wifiNetwork.bindSocket(unifiedSocket);
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to bind socket to Wi-Fi: " + e.getMessage());
+            }
         }
     }
 
-    private void closeSockets() {
-        if (videoSocket != null && !videoSocket.isClosed()) {
-            try { videoSocket.close(); } catch (Exception ignored) {}
-            videoSocket = null;
-        }
-        if (handshakeSocket != null && !handshakeSocket.isClosed()) {
-            try { handshakeSocket.close(); } catch (Exception ignored) {}
-            handshakeSocket = null;
+    private synchronized void closeSocket() {
+        if (unifiedSocket != null && !unifiedSocket.isClosed()) {
+            try { unifiedSocket.close(); } catch (Exception ignored) {}
+            unifiedSocket = null;
         }
     }
 
     /**
-     * Continuous handshake sender to keep drone camera awake and streaming.
-     * startCmd [0x42, 0x76] ('B', 'v') from libCamera.so
+     * Handshake sender loop: Sends startCmd [0x42, 0x76] ('B', 'v')
+     * DIRECTLY through unifiedSocket (bound to port 8080).
+     * This guarantees the drone sees source port = 8080 and replies back to port 8080!
      */
     private void handshakeLoop() {
         byte[] handshakePacket = new byte[]{0x42, 0x76};
 
-        try {
-            handshakeSocket = new DatagramSocket();
-            handshakeSocket.setReuseAddress(true);
-            Network wifiNet = networkManager.getWifiNetwork();
-            if (wifiNet != null) {
-                try { wifiNet.bindSocket(handshakeSocket); } catch (Exception ignored) {}
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Handshake socket creation failed: " + e.getMessage());
-        }
-
         int count = 0;
         while (running) {
             try {
-                Network wifiNet = networkManager.getWifiNetwork();
-                if (handshakeSocket != null && !handshakeSocket.isClosed()) {
-                    if (wifiNet != null) {
-                        try { wifiNet.bindSocket(handshakeSocket); } catch (Exception ignored) {}
-                    }
-
+                if (unifiedSocket != null && !unifiedSocket.isClosed()) {
+                    Network wifiNet = networkManager.getWifiNetwork();
                     for (String ip : targetIps) {
                         try {
                             InetAddress addr = (wifiNet != null) ? wifiNet.getByName(ip) : InetAddress.getByName(ip);
-                            // Send wake-up to both port 8080 and 8090
-                            handshakeSocket.send(new DatagramPacket(handshakePacket, 2, addr, 8080));
-                            handshakeSocket.send(new DatagramPacket(handshakePacket, 2, addr, 8090));
+                            DatagramPacket p = new DatagramPacket(handshakePacket, handshakePacket.length, addr, VIDEO_PORT);
+                            unifiedSocket.send(p);
                         } catch (Exception ignored) {}
                     }
                 }
             } catch (Exception e) {
-                Log.w(TAG, "Handshake error: " + e.getMessage());
+                Log.w(TAG, "Handshake send error: " + e.getMessage());
             }
 
             try {
-                // First 10 bursts every 200ms to immediately wake up camera, then every 1000ms
                 count++;
-                Thread.sleep(count < 10 ? 200 : 1000);
+                // Quick burst initially (every 150ms for first 15 bursts), then every 800ms keepalive
+                Thread.sleep(count < 15 ? 150 : 800);
             } catch (InterruptedException e) {
                 break;
             }
@@ -176,64 +174,71 @@ public class VideoReceiver {
     }
 
     /**
-     * Dedicated high-priority video packet receiver loop.
-     * Never drops incoming packets and avoids GC allocation.
+     * Unified reception loop on local port 8080.
      */
-    private void receiveVideoLoop() {
+    private void receiveAndProcessLoop() {
         try {
-            videoSocket = new DatagramSocket(null);
-            videoSocket.setReuseAddress(true);
-            videoSocket.setReceiveBufferSize(2 * 1024 * 1024); // 2MB OS socket buffer
-            videoSocket.setSoTimeout(2000);
-            videoSocket.bind(new InetSocketAddress(VIDEO_PORT));
+            unifiedSocket = new DatagramSocket(null);
+            unifiedSocket.setReuseAddress(true);
+            unifiedSocket.setReceiveBufferSize(2 * 1024 * 1024); // 2MB kernel buffer
+            unifiedSocket.setSoTimeout(1500);
+            unifiedSocket.bind(new InetSocketAddress(VIDEO_PORT));
 
             Network wifiNet = networkManager.getWifiNetwork();
             if (wifiNet != null) {
-                try { wifiNet.bindSocket(videoSocket); } catch (Exception ignored) {}
+                try { wifiNet.bindSocket(unifiedSocket); } catch (Exception ignored) {}
             }
-            Log.d(TAG, "Bound video UDP socket on port " + VIDEO_PORT);
+            Log.d(TAG, "Bound unified video socket on port " + VIDEO_PORT);
         } catch (Exception e) {
-            Log.e(TAG, "Failed binding video socket on " + VIDEO_PORT + ": " + e.getMessage());
+            Log.e(TAG, "Failed binding video UDP socket on " + VIDEO_PORT + ": " + e.getMessage());
             return;
         }
 
-        byte[] rxBuffer = new byte[2048];
+        byte[] rxBuffer = new byte[4096];
         DatagramPacket packet = new DatagramPacket(rxBuffer, rxBuffer.length);
         lastFpsCalcTime = System.currentTimeMillis();
 
-        while (running && videoSocket != null && !videoSocket.isClosed()) {
+        while (running && unifiedSocket != null && !unifiedSocket.isClosed()) {
             try {
-                videoSocket.receive(packet);
+                unifiedSocket.receive(packet);
                 int len = packet.getLength();
-                if (len < 4) continue;
+                if (len < 2) continue;
 
                 processIncomingPacket(rxBuffer, len);
 
             } catch (java.net.SocketTimeoutException ste) {
-                // Timeout is normal when drone is not yet streaming
+                // Check if camera was streaming but timed out
+                if (cameraConnected && (System.currentTimeMillis() - lastFrameTimestamp > 3000)) {
+                    cameraConnected = false;
+                    notifyCameraState(false);
+                }
             } catch (Exception e) {
                 if (!running) break;
             }
         }
 
-        closeSockets();
+        closeSocket();
     }
 
     /**
-     * Frame Reassembly matching libCamera.so Image::put:
-     * Packet structure with 8-byte header:
-     * - byte 0: frame_id
-     * - byte 1: flag
-     * - byte 2: total_slices
-     * - byte 3: slice_index
-     * - bytes 8..len: payload (up to 1464 bytes)
-     *
-     * Also supports direct MJPEG streaming packets (starting with 0xFF, 0xD8).
+     * Process incoming UDP packet matching libCamera.so logic.
      */
     private synchronized void processIncomingPacket(byte[] data, int len) {
-        // Mode 1: Check for 8-byte header (libCamera.so protocol)
+        // 1. Handshake response check: [0x55, ..., 0x99]
+        if (len == 8 && (data[0] & 0xFF) == 0x55 && (data[7] & 0xFF) == 0x99) {
+            int camType = data[2] & 0xFF;
+            Log.d(TAG, "Drone camera handshake ACK received! Camera type: " + camType);
+            if (!cameraConnected) {
+                cameraConnected = true;
+                notifyCameraState(true);
+            }
+            return;
+        }
+
+        // 2. libCamera.so protocol: 8-byte header
+        // byte 0: frame_id, byte 2: total_slices, byte 3: slice_index, bytes 8..len: JPEG payload
         if (len > 8 && (data[8] & 0xFF) == 0xFF && (data[9] & 0xFF) == 0xD8) {
-            // New frame start with 8-byte header!
+            // New frame start with SOI at byte 8
             currentFrameId = data[0] & 0xFF;
             expectedTotalSlices = data[2] & 0xFF;
             int sliceIndex = data[3] & 0xFF;
@@ -260,7 +265,6 @@ public class VideoReceiver {
                 }
             }
 
-            // Check if last slice reached or JPEG EOI found
             boolean isLastSlice = (expectedTotalSlices > 0 && sliceIndex + 1 >= expectedTotalSlices);
             boolean eoiInPacket = (payloadLen >= 2 && (data[len - 2] & 0xFF) == 0xFF && (data[len - 1] & 0xFF) == 0xD9);
 
@@ -272,7 +276,7 @@ public class VideoReceiver {
             return;
         }
 
-        // Mode 2: Direct MJPEG stream (packet starting with 0xFF, 0xD8 directly at offset 0)
+        // 3. Fallback: Direct MJPEG stream (packet starting with 0xFF, 0xD8 at offset 0)
         int soi = findJpegSOI(data, len);
         if (soi >= 0) {
             sequentialWritePos = 0;
@@ -296,7 +300,7 @@ public class VideoReceiver {
                 dispatchFrameIfValid(frameBuffer, sequentialWritePos);
                 isAssembling = false;
                 sequentialWritePos = 0;
-            } else if (sequentialWritePos > 350000) {
+            } else if (sequentialWritePos > 400000) {
                 isAssembling = false;
                 sequentialWritePos = 0;
             }
@@ -312,17 +316,13 @@ public class VideoReceiver {
         return -1;
     }
 
-    /**
-     * Dispatches complete frame to asynchronous non-blocking decoder.
-     * If the decoder is currently busy with previous frame, skips to maintain 0ms latency.
-     */
     private void dispatchFrameIfValid(byte[] buf, int length) {
         if (length < 100 || length > MAX_FRAME_SIZE) return;
 
-        // Verify SOI (0xFF, 0xD8)
+        // Verify SOI
         if ((buf[0] & 0xFF) != 0xFF || (buf[1] & 0xFF) != 0xD8) return;
 
-        // Verify or locate EOI (0xFF, 0xD9) in the last 256 bytes
+        // Find EOI in last 256 bytes
         int actualLen = length;
         boolean hasEoi = false;
         int searchStart = Math.max(0, actualLen - 256);
@@ -336,25 +336,31 @@ public class VideoReceiver {
 
         if (!hasEoi) return;
 
+        lastFrameTimestamp = System.currentTimeMillis();
+        if (!cameraConnected) {
+            cameraConnected = true;
+            notifyCameraState(true);
+        }
+
         final byte[] completeJpeg = new byte[actualLen];
         System.arraycopy(buf, 0, completeJpeg, 0, actualLen);
 
-        // Notify Gemini Live Vision directly with raw JPEG (rate limited inside GeminiLiveClient)
+        // Feed Gemini Live Vision directly with raw JPEG bytes
         if (listener != null) {
             listener.onRawJpegFrame(completeJpeg);
         }
 
-        // Non-blocking UI decode: drop frame if previous decode is still in progress
+        // Non-blocking UI decode: Skip decode if previous frame is still in progress (0ms latency)
         if (isDecoding.compareAndSet(false, true)) {
             decodeExecutor.execute(() -> {
                 try {
                     BitmapFactory.Options opts = new BitmapFactory.Options();
-                    // RGB_565 halves memory bandwidth and doubles decode performance
-                    opts.inPreferredConfig = Bitmap.Config.RGB_565;
+                    opts.inPreferredConfig = Bitmap.Config.RGB_565; // Halves memory bandwidth, doubles decode speed
                     opts.inDither = false;
 
                     Bitmap bmp = BitmapFactory.decodeByteArray(completeJpeg, 0, completeJpeg.length, opts);
                     if (bmp != null) {
+                        latestFrameBitmap = bmp;
                         frameCounter++;
                         long now = System.currentTimeMillis();
                         if (now - lastFpsCalcTime >= 1000) {
@@ -376,6 +382,12 @@ public class VideoReceiver {
                     isDecoding.set(false);
                 }
             });
+        }
+    }
+
+    private void notifyCameraState(boolean connected) {
+        if (listener != null) {
+            mainHandler.post(() -> listener.onCameraStateChanged(connected));
         }
     }
 }

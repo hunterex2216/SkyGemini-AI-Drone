@@ -43,6 +43,7 @@ public class GeminiLiveClient {
         void onStatusChange(String status, boolean connected);
         void onUserTranscript(String text);
         void onAiTranscript(String text);
+        void onSpeakingStateChanged(boolean aiSpeaking, boolean userSpeaking);
         void onError(String error);
     }
 
@@ -59,6 +60,9 @@ public class GeminiLiveClient {
 
     private volatile boolean isRunning = false;
     private volatile boolean isConnected = false;
+    private volatile boolean isAiSpeaking = false;
+    private volatile boolean isUserSpeaking = false;
+    private volatile long lastAiAudioTime = 0;
 
     private AudioRecord audioRecord;
     private AudioTrack audioTrack;
@@ -138,6 +142,38 @@ public class GeminiLiveClient {
 
                     sendWsText(root.toString());
                 } catch (Exception ignored) {}
+            });
+        }
+    }
+
+    /**
+     * Injects a spoken command / confirmation request into Gemini Live.
+     * Gemini Live immediately responds verbally in Bengali using its native voice.
+     */
+    public void speakBengaliPrompt(String promptText) {
+        if (!isConnected || socketOut == null) return;
+        if (executor != null && !executor.isShutdown()) {
+            executor.execute(() -> {
+                try {
+                    JSONObject clientContent = new JSONObject();
+                    JSONArray turns = new JSONArray();
+                    JSONObject turn = new JSONObject();
+                    turn.put("role", "user");
+                    JSONArray parts = new JSONArray();
+                    JSONObject part = new JSONObject();
+                    part.put("text", promptText);
+                    parts.put(part);
+                    turn.put("parts", parts);
+                    turns.put(turn);
+                    clientContent.put("turns", turns);
+                    clientContent.put("turnComplete", true);
+
+                    JSONObject root = new JSONObject();
+                    root.put("clientContent", clientContent);
+                    sendWsText(root.toString());
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed sending clientContent prompt: " + e.getMessage());
+                }
             });
         }
     }
@@ -253,6 +289,9 @@ public class GeminiLiveClient {
         speechConfig.put("voiceConfig", voiceConfig);
         genConfig.put("speechConfig", speechConfig);
         setup.put("generationConfig", genConfig);
+
+        setup.put("inputAudioTranscription", new JSONObject());
+        setup.put("outputAudioTranscription", new JSONObject());
 
         JSONObject sysInstruction = new JSONObject();
         JSONArray parts = new JSONArray();
@@ -416,10 +455,38 @@ public class GeminiLiveClient {
     private void streamMicrophoneLoop() {
         // 1024 bytes = 32ms of 16kHz 16-bit mono PCM for ultra-low latency streaming
         byte[] pcmBuffer = new byte[1024];
+        long lastUserVoiceTime = 0;
+
         while (isRunning && isConnected && audioRecord != null) {
             try {
                 int read = audioRecord.read(pcmBuffer, 0, pcmBuffer.length);
                 if (read > 0) {
+                    // Compute RMS volume to track user speech state
+                    long sum = 0;
+                    for (int i = 0; i < read - 1; i += 2) {
+                        short s = (short) ((pcmBuffer[i] & 0xFF) | (pcmBuffer[i + 1] << 8));
+                        sum += (long) s * s;
+                    }
+                    double rms = Math.sqrt(sum / (read / 2.0));
+                    boolean speaking = rms > 650;
+
+                    long now = System.currentTimeMillis();
+                    if (speaking) {
+                        lastUserVoiceTime = now;
+                        if (!isUserSpeaking) {
+                            isUserSpeaking = true;
+                            notifySpeakingState();
+                        }
+                    } else if (isUserSpeaking && (now - lastUserVoiceTime > 800)) {
+                        isUserSpeaking = false;
+                        notifySpeakingState();
+                    }
+
+                    if (isAiSpeaking && (now - lastAiAudioTime > 800)) {
+                        isAiSpeaking = false;
+                        notifySpeakingState();
+                    }
+
                     String b64 = Base64.encodeToString(pcmBuffer, 0, read, Base64.NO_WRAP);
                     JSONObject audioObj = new JSONObject();
                     audioObj.put("data", b64);
@@ -501,18 +568,8 @@ public class GeminiLiveClient {
                 notifyStatus("GEMINI LIVE: ONLINE", true);
                 notifyAiTranscript("জেমিনি প্রস্তুত! কথা বলুন...");
 
-                // Auto-trigger Gemini to speak verbal greeting in Bengali
-                if (executor != null && !executor.isShutdown()) {
-                    executor.execute(() -> {
-                        try {
-                            JSONObject realtimeInput = new JSONObject();
-                            realtimeInput.put("text", "ড্রোন সেশন চালু হয়েছে। ব্যবহারকারীকে সুন্দর ও আনন্দের সাথে বাংলায় স্বাগতম জানান এবং বলুন আপনি ড্রোন ওড়াতে তৈরি।");
-                            JSONObject root = new JSONObject();
-                            root.put("realtimeInput", realtimeInput);
-                            sendWsText(root.toString());
-                        } catch (Exception ignored) {}
-                    });
-                }
+                // Auto-trigger Gemini to speak verbal greeting in Bengali aloud
+                speakBengaliPrompt("ড্রোন সেশন চালু হয়েছে। আপনি স্কাইজেমিনি এআই ড্রোন কো-পাইলট। ব্যবহারকারীকে সুন্দর ও আনন্দের সাথে বাংলায় স্বাগতম জানান এবং বলুন আপনি ড্রোন ওড়াতে তৈরি।");
             }
 
             if (msg.has("serverContent")) {
@@ -530,6 +587,11 @@ public class GeminiLiveClient {
                                 if (b64Audio != null && !b64Audio.isEmpty()) {
                                     byte[] pcm24 = Base64.decode(b64Audio, Base64.DEFAULT);
                                     if (audioTrack != null && pcm24 != null) {
+                                        lastAiAudioTime = System.currentTimeMillis();
+                                        if (!isAiSpeaking) {
+                                            isAiSpeaking = true;
+                                            notifySpeakingState();
+                                        }
                                         audioTrack.write(pcm24, 0, pcm24.length);
                                     }
                                 }
@@ -540,6 +602,11 @@ public class GeminiLiveClient {
                             }
                         }
                     }
+                }
+
+                if (sc.optBoolean("turnComplete", false)) {
+                    isAiSpeaking = false;
+                    notifySpeakingState();
                 }
 
                 if (sc.has("inputTranscription")) {
@@ -554,6 +621,8 @@ public class GeminiLiveClient {
 
                 if (sc.optBoolean("interrupted", false)) {
                     // Natural speech barge-in / interruption
+                    isAiSpeaking = false;
+                    notifySpeakingState();
                     if (audioTrack != null) {
                         audioTrack.pause();
                         audioTrack.flush();
@@ -746,6 +815,14 @@ public class GeminiLiveClient {
         }
         socketOut = null;
         socketIn = null;
+    }
+
+    private void notifySpeakingState() {
+        if (listener != null) {
+            final boolean ai = isAiSpeaking;
+            final boolean user = isUserSpeaking;
+            mainHandler.post(() -> listener.onSpeakingStateChanged(ai, user));
+        }
     }
 
     private void notifyStatus(String status, boolean connected) {
