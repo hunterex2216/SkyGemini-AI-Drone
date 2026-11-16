@@ -69,12 +69,30 @@ public class VideoReceiver {
 
     private int frameCounter = 0;
     private long lastFpsCalcTime = 0;
+    private long lastUiFrameTime = 0;
+    private long lastGeminiFrameTime = 0;
 
     private final String[] targetIps = new String[]{"192.168.4.153", "192.168.4.1"};
+    private volatile InetAddress[] cachedTargetAddresses = null;
 
     public VideoReceiver(DualNetworkManager networkManager) {
         this.networkManager = networkManager;
         this.mainHandler = new Handler(Looper.getMainLooper());
+        resolveTargetAddresses(null);
+    }
+
+    private void resolveTargetAddresses(Network wifiNet) {
+        try {
+            InetAddress[] addrs = new InetAddress[targetIps.length];
+            for (int i = 0; i < targetIps.length; i++) {
+                try {
+                    addrs[i] = (wifiNet != null) ? wifiNet.getByName(targetIps[i]) : InetAddress.getByName(targetIps[i]);
+                } catch (Exception ignored) {
+                    addrs[i] = InetAddress.getByName(targetIps[i]);
+                }
+            }
+            cachedTargetAddresses = addrs;
+        } catch (Exception ignored) {}
     }
 
     public void setOnFrameListener(OnFrameListener listener) {
@@ -125,6 +143,7 @@ public class VideoReceiver {
         if (unifiedSocket != null && !unifiedSocket.isClosed()) {
             try {
                 wifiNetwork.bindSocket(unifiedSocket);
+                resolveTargetAddresses(wifiNetwork);
             } catch (Exception e) {
                 Log.w(TAG, "Failed to bind socket to Wi-Fi: " + e.getMessage());
             }
@@ -150,13 +169,15 @@ public class VideoReceiver {
         while (running) {
             try {
                 if (unifiedSocket != null && !unifiedSocket.isClosed()) {
-                    Network wifiNet = networkManager.getWifiNetwork();
-                    for (String ip : targetIps) {
-                        try {
-                            InetAddress addr = (wifiNet != null) ? wifiNet.getByName(ip) : InetAddress.getByName(ip);
-                            DatagramPacket p = new DatagramPacket(handshakePacket, handshakePacket.length, addr, VIDEO_PORT);
-                            unifiedSocket.send(p);
-                        } catch (Exception ignored) {}
+                    InetAddress[] addrs = cachedTargetAddresses;
+                    if (addrs != null) {
+                        for (InetAddress addr : addrs) {
+                            if (addr == null) continue;
+                            try {
+                                DatagramPacket p = new DatagramPacket(handshakePacket, handshakePacket.length, addr, VIDEO_PORT);
+                                unifiedSocket.send(p);
+                            } catch (Exception ignored) {}
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -336,22 +357,33 @@ public class VideoReceiver {
 
         if (!hasEoi) return;
 
-        lastFrameTimestamp = System.currentTimeMillis();
+        long now = System.currentTimeMillis();
+        lastFrameTimestamp = now;
         if (!cameraConnected) {
             cameraConnected = true;
             notifyCameraState(true);
         }
 
+        // Throttle UI decode to a stable ~25 FPS (40ms interval) to completely prevent GC lag
+        boolean shouldDecodeForUi = (now - lastUiFrameTime >= 40) && isDecoding.compareAndSet(false, true);
+        boolean shouldSendToGemini = (listener != null) && (now - lastGeminiFrameTime >= 700);
+
+        if (!shouldDecodeForUi && !shouldSendToGemini) {
+            return; // Zero allocations, fast drop!
+        }
+
         final byte[] completeJpeg = new byte[actualLen];
         System.arraycopy(buf, 0, completeJpeg, 0, actualLen);
 
-        // Feed Gemini Live Vision directly with raw JPEG bytes
-        if (listener != null) {
+        // Feed Gemini Live Vision with raw JPEG bytes only when scheduled (every 700ms)
+        if (shouldSendToGemini) {
+            lastGeminiFrameTime = now;
             listener.onRawJpegFrame(completeJpeg);
         }
 
-        // Non-blocking UI decode: Skip decode if previous frame is still in progress (0ms latency)
-        if (isDecoding.compareAndSet(false, true)) {
+        // Non-blocking UI decode
+        if (shouldDecodeForUi) {
+            lastUiFrameTime = now;
             decodeExecutor.execute(() -> {
                 try {
                     BitmapFactory.Options opts = new BitmapFactory.Options();
@@ -362,11 +394,11 @@ public class VideoReceiver {
                     if (bmp != null) {
                         latestFrameBitmap = bmp;
                         frameCounter++;
-                        long now = System.currentTimeMillis();
-                        if (now - lastFpsCalcTime >= 1000) {
+                        long t = System.currentTimeMillis();
+                        if (t - lastFpsCalcTime >= 1000) {
                             final int fps = frameCounter;
                             frameCounter = 0;
-                            lastFpsCalcTime = now;
+                            lastFpsCalcTime = t;
                             if (listener != null) {
                                 mainHandler.post(() -> listener.onFpsUpdate(fps));
                             }

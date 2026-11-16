@@ -30,6 +30,12 @@ public class AiOrbVisualizerView extends View {
     private boolean isUserSpeaking = false;
 
     private float animPhase = 0f;
+    private RadialGradient cachedGlowShader;
+    private int lastGlowColor = 0;
+    private float lastGlowR = 0f;
+    private RadialGradient cachedCoreShader;
+    private int lastCoreColor = 0;
+    private float lastCoreR = 0f;
 
     public AiOrbVisualizerView(Context context) {
         super(context);
@@ -108,9 +114,13 @@ public class AiOrbVisualizerView extends View {
 
         // 2. Diffuse Radial Glow
         float glowRadius = baseR * 1.6f;
-        RadialGradient grad = new RadialGradient(cx, cy, glowRadius,
-                glowColor, Color.TRANSPARENT, Shader.TileMode.CLAMP);
-        glowPaint.setShader(grad);
+        if (cachedGlowShader == null || lastGlowColor != glowColor || Math.abs(lastGlowR - glowRadius) > 1f) {
+            cachedGlowShader = new RadialGradient(cx, cy, glowRadius,
+                    glowColor, Color.TRANSPARENT, Shader.TileMode.CLAMP);
+            lastGlowColor = glowColor;
+            lastGlowR = glowRadius;
+        }
+        glowPaint.setShader(cachedGlowShader);
         canvas.drawCircle(cx, cy, glowRadius, glowPaint);
 
         // 3. Rotating Outer Arc Rings
@@ -127,12 +137,16 @@ public class AiOrbVisualizerView extends View {
         // 4. Solid Core Sphere with Breathing Pulse
         float breath = (float) (Math.sin(animPhase * Math.PI * 2.0) * 0.08);
         float currentCoreR = baseR * (0.85f + breath);
-        RadialGradient coreGrad = new RadialGradient(cx - currentCoreR * 0.2f, cy - currentCoreR * 0.2f,
-                currentCoreR, Color.WHITE, mainColor, Shader.TileMode.CLAMP);
-        corePaint.setShader(coreGrad);
+        if (cachedCoreShader == null || lastCoreColor != mainColor || Math.abs(lastCoreR - currentCoreR) > 2f) {
+            cachedCoreShader = new RadialGradient(cx - currentCoreR * 0.2f, cy - currentCoreR * 0.2f,
+                    currentCoreR, Color.WHITE, mainColor, Shader.TileMode.CLAMP);
+            lastCoreColor = mainColor;
+            lastCoreR = currentCoreR;
+        }
+        corePaint.setShader(cachedCoreShader);
         canvas.drawCircle(cx, cy, currentCoreR, corePaint);
 
-        // Continuous redraw for fluid animation
-        postInvalidateOnAnimation();
+        // Throttle redraw to 30 FPS (~33ms) for smooth animation without burning CPU/GPU
+        postInvalidateDelayed(33);
     }
 }

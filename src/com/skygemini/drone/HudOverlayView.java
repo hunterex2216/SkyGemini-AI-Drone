@@ -123,7 +123,7 @@ public class HudOverlayView extends View {
         canvas.drawText("FPV CAMERA SEARCHING... (UDP:8080)", cx - 180f, cy - 70f, textPaint);
         smallTextPaint.setAlpha((int) (pulse * 220));
         canvas.drawText("Connect phone to drone Wi-Fi (192.168.4.153)", cx - 170f, cy - 45f, smallTextPaint);
-        postInvalidateOnAnimation();
+        postInvalidateDelayed(50);
     }
 
     private void drawCornerBrackets(Canvas canvas, int w, int h) {

@@ -104,6 +104,7 @@ public class GeminiLiveClient {
     private ExecutorService executor;
     private long lastVideoSendTime = 0;
     private final SecureRandom secureRandom = new SecureRandom();
+    private final Object wsSendLock = new Object();
 
     public GeminiLiveClient(DualNetworkManager networkManager, DroneController droneController) {
         this.networkManager = networkManager;
@@ -128,7 +129,7 @@ public class GeminiLiveClient {
         return LIVE_MODEL_CANDIDATES[0];
     }
 
-    public synchronized void startLiveSession() {
+    public void startLiveSession() {
         if (isRunning) return;
         if (apiKey == null || apiKey.trim().isEmpty()) {
             notifyError("Gemini API Key খালি! ⚙️ সেটিংসে কি সেট করুন।");
@@ -140,7 +141,7 @@ public class GeminiLiveClient {
         executor.execute(this::runWebSocketSession);
     }
 
-    public synchronized void stopLiveSession() {
+    public void stopLiveSession() {
         isRunning = false;
         isConnected = false;
         setupDone = false;
@@ -246,7 +247,15 @@ public class GeminiLiveClient {
 
             rawSocket = new Socket();
             rawSocket.setTcpNoDelay(true);
-            rawSocket.connect(new InetSocketAddress(targetAddr, 443), 8000);
+            if (cellNet != null) {
+                try {
+                    cellNet.bindSocket(rawSocket);
+                    Log.d(TAG, "Successfully bound Gemini socket to 4G/5G Cellular network: " + cellNet);
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed binding rawSocket to Cellular: " + e.getMessage());
+                }
+            }
+            rawSocket.connect(new InetSocketAddress(targetAddr, 443), 6000);
 
             SSLSocketFactory sslFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
             sslSocket = (SSLSocket) sslFactory.createSocket(rawSocket, "generativelanguage.googleapis.com", 443, true);
@@ -944,62 +953,66 @@ public class GeminiLiveClient {
         }
     }
 
-    private synchronized void sendWsText(String text) {
-        if (socketOut == null) return;
-        try {
-            byte[] data = text.getBytes(StandardCharsets.UTF_8);
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            out.write(0x81); // FIN + Text opcode
+    private void sendWsText(String text) {
+        synchronized (wsSendLock) {
+            if (socketOut == null) return;
+            try {
+                byte[] data = text.getBytes(StandardCharsets.UTF_8);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                out.write(0x81); // FIN + Text opcode
 
-            int len = data.length;
-            byte[] maskKey = new byte[4];
-            secureRandom.nextBytes(maskKey);
+                int len = data.length;
+                byte[] maskKey = new byte[4];
+                secureRandom.nextBytes(maskKey);
 
-            if (len <= 125) {
-                out.write(0x80 | len);
-            } else if (len <= 65535) {
-                out.write(0x80 | 126);
-                out.write((len >> 8) & 0xFF);
-                out.write(len & 0xFF);
-            } else {
-                out.write(0x80 | 127);
-                for (int i = 7; i >= 0; i--) {
-                    out.write((int) ((len >> (8 * i)) & 0xFF));
+                if (len <= 125) {
+                    out.write(0x80 | len);
+                } else if (len <= 65535) {
+                    out.write(0x80 | 126);
+                    out.write((len >> 8) & 0xFF);
+                    out.write(len & 0xFF);
+                } else {
+                    out.write(0x80 | 127);
+                    for (int i = 7; i >= 0; i--) {
+                        out.write((int) ((len >> (8 * i)) & 0xFF));
+                    }
                 }
-            }
 
-            out.write(maskKey);
-            byte[] maskedData = new byte[len];
-            for (int i = 0; i < len; i++) {
-                maskedData[i] = (byte) (data[i] ^ maskKey[i % 4]);
-            }
-            out.write(maskedData);
+                out.write(maskKey);
+                byte[] maskedData = new byte[len];
+                for (int i = 0; i < len; i++) {
+                    maskedData[i] = (byte) (data[i] ^ maskKey[i % 4]);
+                }
+                out.write(maskedData);
 
-            socketOut.write(out.toByteArray());
-            socketOut.flush();
-        } catch (Exception e) {
-            Log.w(TAG, "sendWsText error: " + e.getMessage());
+                socketOut.write(out.toByteArray());
+                socketOut.flush();
+            } catch (Exception e) {
+                Log.w(TAG, "sendWsText error: " + e.getMessage());
+            }
         }
     }
 
-    private synchronized void sendWsPong(byte[] payload) {
-        if (socketOut == null) return;
-        try {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            out.write(0x8A); // Pong opcode
-            int len = (payload != null) ? payload.length : 0;
-            byte[] maskKey = new byte[4];
-            secureRandom.nextBytes(maskKey);
-            out.write(0x80 | len);
-            out.write(maskKey);
-            if (payload != null) {
-                for (int i = 0; i < len; i++) {
-                    out.write(payload[i] ^ maskKey[i % 4]);
+    private void sendWsPong(byte[] payload) {
+        synchronized (wsSendLock) {
+            if (socketOut == null) return;
+            try {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                out.write(0x8A); // Pong opcode
+                int len = (payload != null) ? payload.length : 0;
+                byte[] maskKey = new byte[4];
+                secureRandom.nextBytes(maskKey);
+                out.write(0x80 | len);
+                out.write(maskKey);
+                if (payload != null) {
+                    for (int i = 0; i < len; i++) {
+                        out.write(payload[i] ^ maskKey[i % 4]);
+                    }
                 }
-            }
-            socketOut.write(out.toByteArray());
-            socketOut.flush();
-        } catch (Exception ignored) {}
+                socketOut.write(out.toByteArray());
+                socketOut.flush();
+            } catch (Exception ignored) {}
+        }
     }
 
     private void readFully(InputStream in, byte[] b, int off, int len) throws Exception {
@@ -1011,25 +1024,27 @@ public class GeminiLiveClient {
         }
     }
 
-    private synchronized void closeSocket() {
-        try {
-            if (socketOut != null) {
-                // Send standard WebSocket close frame
-                byte[] closeFrame = new byte[]{(byte) 0x88, (byte) 0x80, 0x00, 0x00, 0x00, 0x00};
-                socketOut.write(closeFrame);
-                socketOut.flush();
-            }
-        } catch (Exception ignored) {}
+    private void closeSocket() {
+        synchronized (wsSendLock) {
+            try {
+                if (socketOut != null) {
+                    // Send standard WebSocket close frame
+                    byte[] closeFrame = new byte[]{(byte) 0x88, (byte) 0x80, 0x00, 0x00, 0x00, 0x00};
+                    socketOut.write(closeFrame);
+                    socketOut.flush();
+                }
+            } catch (Exception ignored) {}
 
-        try { if (socketIn != null) socketIn.close(); } catch (Exception ignored) {}
-        try { if (socketOut != null) socketOut.close(); } catch (Exception ignored) {}
-        try { if (sslSocket != null) sslSocket.close(); } catch (Exception ignored) {}
-        try { if (rawSocket != null) rawSocket.close(); } catch (Exception ignored) {}
+            try { if (socketIn != null) socketIn.close(); } catch (Exception ignored) {}
+            try { if (socketOut != null) socketOut.close(); } catch (Exception ignored) {}
+            try { if (sslSocket != null) sslSocket.close(); } catch (Exception ignored) {}
+            try { if (rawSocket != null) rawSocket.close(); } catch (Exception ignored) {}
 
-        socketIn = null;
-        socketOut = null;
-        sslSocket = null;
-        rawSocket = null;
+            socketIn = null;
+            socketOut = null;
+            sslSocket = null;
+            rawSocket = null;
+        }
     }
 
     private void notifySpeakingState(boolean ai, boolean user) {

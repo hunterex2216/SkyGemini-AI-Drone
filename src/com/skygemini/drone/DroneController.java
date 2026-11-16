@@ -56,10 +56,26 @@ public class DroneController {
 
     private final String[] targetIps = new String[]{"192.168.4.153", "192.168.4.1"};
     private final int[] targetPorts = new int[]{8090, 8080};
+    private volatile InetAddress[] cachedTargetAddresses = null;
 
     public DroneController(DualNetworkManager networkManager) {
         this.networkManager = networkManager;
         this.mainHandler = new Handler(Looper.getMainLooper());
+        resolveTargetAddresses(null);
+    }
+
+    private void resolveTargetAddresses(Network wifiNet) {
+        try {
+            InetAddress[] addrs = new InetAddress[targetIps.length];
+            for (int i = 0; i < targetIps.length; i++) {
+                try {
+                    addrs[i] = (wifiNet != null) ? wifiNet.getByName(targetIps[i]) : InetAddress.getByName(targetIps[i]);
+                } catch (Exception ignored) {
+                    addrs[i] = InetAddress.getByName(targetIps[i]);
+                }
+            }
+            cachedTargetAddresses = addrs;
+        } catch (Exception ignored) {}
     }
 
     public synchronized void start() {
@@ -70,6 +86,9 @@ public class DroneController {
             Network wifiNet = networkManager.getWifiNetwork();
             if (wifiNet != null) {
                 wifiNet.bindSocket(udpSocket);
+                resolveTargetAddresses(wifiNet);
+            } else if (cachedTargetAddresses == null) {
+                resolveTargetAddresses(null);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error creating command socket: " + e.getMessage());
@@ -100,6 +119,7 @@ public class DroneController {
         if (udpSocket != null && !udpSocket.isClosed()) {
             try {
                 wifiNetwork.bindSocket(udpSocket);
+                resolveTargetAddresses(wifiNetwork);
             } catch (Exception e) {
                 Log.w(TAG, "Failed rebinding cmd socket: " + e.getMessage());
             }
@@ -120,11 +140,6 @@ public class DroneController {
     }
 
     private void tick() {
-        Network wifiNet = networkManager.getWifiNetwork();
-        if (wifiNet != null && udpSocket != null) {
-            try { wifiNet.bindSocket(udpSocket); } catch (Exception ignored) {}
-        }
-
         // Handle pulses
         if (pulseTakeoff > 0) {
             flagTakeoff = true;
@@ -156,17 +171,20 @@ public class DroneController {
         byte[] pkt8 = buildPacket8();
         byte[] pkt20 = buildPacket20();
 
-        // Transmit via UDP to 192.168.4.153:8090 and 8080
+        // Transmit via UDP to pre-resolved target addresses (zero syscall / zero DNS overhead)
         if (udpSocket != null && !udpSocket.isClosed()) {
-            for (String ip : targetIps) {
-                for (int port : targetPorts) {
-                    try {
-                        InetAddress addr = (wifiNet != null) ? wifiNet.getByName(ip) : InetAddress.getByName(ip);
-                        DatagramPacket p8 = new DatagramPacket(pkt8, pkt8.length, addr, port);
-                        DatagramPacket p20 = new DatagramPacket(pkt20, pkt20.length, addr, port);
-                        udpSocket.send(p8);
-                        udpSocket.send(p20);
-                    } catch (Exception ignored) {}
+            InetAddress[] addrs = cachedTargetAddresses;
+            if (addrs != null) {
+                for (InetAddress addr : addrs) {
+                    if (addr == null) continue;
+                    for (int port : targetPorts) {
+                        try {
+                            DatagramPacket p8 = new DatagramPacket(pkt8, pkt8.length, addr, port);
+                            DatagramPacket p20 = new DatagramPacket(pkt20, pkt20.length, addr, port);
+                            udpSocket.send(p8);
+                            udpSocket.send(p20);
+                        } catch (Exception ignored) {}
+                    }
                 }
             }
         }

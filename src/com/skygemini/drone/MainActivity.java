@@ -181,14 +181,8 @@ public class MainActivity extends Activity implements SensorEventListener {
 
             checkRuntimePermissions();
 
-            // Safe Auto-Connect if key is configured, no crashing dialog timer
             if (savedKey != null && !savedKey.isEmpty() && !savedKey.equals(DEFAULT_GEMINI_KEY)) {
-                tvTranscript.setText("🤖 জেমিনি প্রস্তুত। লাইভ কানেক্ট হচ্ছে...");
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    if (!geminiClient.isConnected() && !isFinishing()) {
-                        geminiClient.startLiveSession();
-                    }
-                }, 1000);
+                tvTranscript.setText("🎙️ [START AI] এ ট্যাপ করে জেমিনির সাথে বাংলায় কথা বলুন");
             } else {
                 tvTranscript.setText("🎙️ উপরে [ ⚙️ SETTINGS ] বা [ 🔑 AI KEY ] চাপুন");
             }
