@@ -308,10 +308,7 @@ public class GeminiLiveClient {
             // Initialize 24kHz AudioTrack & start dedicated playback pump
             initAudioTrackAndPlaybackPump();
 
-            // Initialize 16kHz AudioRecord & start speech stream
-            initAudioRecordAndRecordPump();
-
-            // Main WebSocket reception loop
+            // Main WebSocket reception loop (Microphone pump starts after setupComplete)
             receiveWebSocketLoop();
 
         } catch (Exception e) {
@@ -348,7 +345,7 @@ public class GeminiLiveClient {
         JSONObject speechConfig = new JSONObject();
         JSONObject voiceConfig = new JSONObject();
         JSONObject prebuilt = new JSONObject();
-        prebuilt.put("voiceName", "Puck"); // Or Charon
+        prebuilt.put("voiceName", "Charon"); // Aoede, Kore, Charon, Puck, Fenrir
         voiceConfig.put("prebuiltVoiceConfig", prebuilt);
         speechConfig.put("voiceConfig", voiceConfig);
         genConfig.put("speechConfig", speechConfig);
@@ -761,7 +758,7 @@ public class GeminiLiveClient {
                     break;
                 } else if (opcode == 0x9) {
                     sendWsPong(payload);
-                } else if (opcode == 0x1) {
+                } else if (opcode == 0x1 || opcode == 0x2) {
                     String text = new String(payload, StandardCharsets.UTF_8);
                     handleServerMessage(text);
                 }
@@ -785,7 +782,10 @@ public class GeminiLiveClient {
                 String activeModel = getActiveModel();
                 Log.d(TAG, "Gemini Live setupComplete confirmed on: " + activeModel);
                 notifyStatus("GEMINI LIVE: ONLINE (" + activeModel.replace("models/", "") + ")", true);
-                notifyAiTranscript("জেমিনি প্রস্তুত! কথা বলুন...");
+                notifyAiTranscript("🎙️ জেমিনি সংযুক্ত হয়েছে! বাংলায় কথা বলুন...");
+
+                // Start microphone speech stream now that setup is complete!
+                initAudioRecordAndRecordPump();
 
                 // Verbal greeting in Bengali
                 speakBengaliPrompt("ড্রোন সেশন চালু হয়েছে। আপনি স্কাইজেমিনি এআই ড্রোন কো-পাইলট। ব্যবহারকারীকে সুন্দর ও আনন্দের সাথে বাংলায় বলুন আপনি ড্রোন ওড়াতে তৈরি।");
